@@ -179,7 +179,7 @@ def load_powers(subject, experiment='NiclsCourierReadOnly',
         # if successful, append events
         full_evs = word_evs if full_evs is None else pd.concat([full_evs, word_evs], ignore_index=True)
         # average reference
-        eeg = eeg[:, :128] - eeg[:, :128].mean(1)
+        eeg = eeg[:, :128] - eeg[:, :128].mean('channel')
         # filter out line noise at 60 and 120Hz
         eeg = ButterworthFilter(eeg, filt_type='stop', freq_range=[58, 62], order=4).filter()
         eeg = ButterworthFilter(eeg, filt_type='stop', freq_range=[118, 122], order=4).filter()
