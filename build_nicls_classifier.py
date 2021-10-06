@@ -152,7 +152,7 @@ class ClassifierModel:
 # NOTE: First session of LTP453 was inadvertently run with trials_per_session=8
 
 def load_powers(subject, experiment='NiclsCourierReadOnly',
-                num_readonly_sess=4, trials_per_session=10,
+                num_readonly_sess=6, trials_per_session=10,
                 rel_start=300, rel_stop=1300, buffer_time=416):
     data = cml.get_data_index(kind = 'ltp')
     data = data[(data['experiment']==experiment)&(data['subject']==subject)].sort_values('session').reset_index()
@@ -201,10 +201,16 @@ def load_powers(subject, experiment='NiclsCourierReadOnly',
     full_evs.trial = full_evs.trial + trials_per_session * full_evs.session
     return full_pows, full_evs
 
-def NestedCV(full_pows, full_evs, c_list):
-    # Selecting overall parameter using nested CV, with LOLO cross validation to get scores for every
-    # parameter and session, then averaging across sessions and taking the paramter which yeilds the highest
-    # average AUC
+def get_sample_weights(evs, class_label='recalled'):
+    mask_0 = evs[class_label] == 0
+    mask_1 = ~mask_0
+    weights = np.ones(len(evs))
+    weights[mask_0] /= sum(mask_0)
+    weights[mask_1] /= sum(mask_1)
+    return weights
+
+def computeCV(full_pows, full_evs, c_list):
+    # CV across sessions for each parameter value
     all_scores = []
     #import pdb; pdb.set_trace()
     for sess in full_evs.session.unique():
@@ -213,24 +219,40 @@ def NestedCV(full_pows, full_evs, c_list):
         score_list = []
         for c in c_list:
             model = LogisticRegression(penalty='l2', C=c, solver='liblinear')
-            probs = perform_lolo_cross_validation(model, full_pows[in_mask], full_evs[in_mask])
-            score_list.append(roc_auc_score(full_evs[in_mask].recalled.astype(int), probs))
+            model.fit(
+                    full_pows[in_mask],
+                    full_evs[in_mask].recalled.astype(int),
+                    weights = get_sample_weights(full_evs[in_mask]))
+            probs = model.predict_proba(full_pows[out_mask])[:, 1]
+            score_list.append(roc_auc_score(full_evs[out_mask].recalled.astype(int), probs))
         all_scores.append(score_list)
     # return scores matrix shaped sessions x hyperparameter
     scores_mat = np.stack(all_scores)
     return scores_mat
 
-def main(subject):
+def main(subject, save_path):
     c_list = np.logspace(np.log10(2e-5), np.log10(1), 9)
     powers, events = load_powers(subject)
-    scores_mat = NestedCV(powers, events, c_list)
+    scores_mat = computeCV(powers, events, c_list)
     best_c = c_list[scores_mat.mean(0).argmax()]
     model = LogisticRegression(penalty='l2', C=best_c, class_weight='balanced', solver='liblinear')
-    model.fit(powers, events.recalled.astype(int))
+    model.fit(
+            powers,
+            events.recalled.astype(int),
+            weights=get_sample_weights(events))
     save_model = ClassifierModel(model)
-    save_model.save_json(f"/data/eeg/scalp/ltp/NiclsCourierReadOnly/{subject}/nicls_{subject}_classifier.json")
+    if save_path:
+        save_model.save_json(save_path)
 
 if __name__=="__main__":
     subject = sys.argv[1]
+    save = bool(sys.argv[2])
+    if save:
+        #save_path = f"/data/eeg/scalp/ltp/NiclsCourierReadOnly/{subject}/nicls_{subject}_classifier.json"
+        import os
+        save_path = f"/scratch/jrudoler/NICLS/{subject}/nicls_{subject}_classifier.json"
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    else:
+        save_path = None
     print(f"Building Classifier for {subject}")
-    main(subject)
+    main(subject, save_path)
