@@ -201,6 +201,8 @@ def load_powers(subject, experiment='NiclsCourierReadOnly',
     full_evs.trial = full_evs.trial + trials_per_session * full_evs.session
     return full_pows, full_evs
 
+# don't actually need this, done implicitly when setting
+# class_weight="balanced" in classifier
 def get_sample_weights(evs, class_label='recalled'):
     mask_0 = evs[class_label] == 0
     mask_1 = ~mask_0
@@ -212,17 +214,16 @@ def get_sample_weights(evs, class_label='recalled'):
 def computeCV(full_pows, full_evs, c_list):
     # CV across sessions for each parameter value
     all_scores = []
-    #import pdb; pdb.set_trace()
     for sess in full_evs.session.unique():
         out_mask = full_evs.session == sess
         in_mask = ~out_mask
         score_list = []
         for c in c_list:
-            model = LogisticRegression(penalty='l2', C=c, solver='liblinear')
+            model = LogisticRegression(penalty='l2', C=c,
+                    class_weight='balanced', solver='liblinear')
             model.fit(
                     full_pows[in_mask],
-                    full_evs[in_mask].recalled.astype(int),
-                    weights = get_sample_weights(full_evs[in_mask]))
+                    full_evs[in_mask].recalled.astype(int))
             probs = model.predict_proba(full_pows[out_mask])[:, 1]
             score_list.append(roc_auc_score(full_evs[out_mask].recalled.astype(int), probs))
         all_scores.append(score_list)
@@ -238,8 +239,7 @@ def main(subject, save_path):
     model = LogisticRegression(penalty='l2', C=best_c, class_weight='balanced', solver='liblinear')
     model.fit(
             powers,
-            events.recalled.astype(int),
-            weights=get_sample_weights(events))
+            events.recalled.astype(int))
     save_model = ClassifierModel(model)
     if save_path:
         save_model.save_json(save_path)
