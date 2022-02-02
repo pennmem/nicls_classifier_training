@@ -157,14 +157,15 @@ def load_powers(subject, experiment='NiclsCourierReadOnly',
     data = cml.get_data_index(kind = 'ltp')
     data = data[(data['experiment']==experiment)&(data['subject']==subject)].sort_values('session').reset_index()
     
+    success_cnt = 0
     full_pows = []
     full_evs = None
     for i, row in data.iterrows():
         print(f"Reading session {i} data")
         if i!=row['session']:
-            logger.warn(f"Session {row['session']} and index {i} do not match")
-        if i>=num_readonly_sess:
-            logger.warn(f'Tried to load data for session {num_readonly_sess},\
+            logger.warning(f"Session {row['session']} and index {i} do not match")
+        if success_cnt>=num_readonly_sess:
+            logger.warning(f'Tried to load data for {success_cnt + 1} sessions,\
                         but did not expect that many read-only sessions')
             break
         # intialize data reader, load words events and buffered eeg epochs
@@ -174,7 +175,7 @@ def load_powers(subject, experiment='NiclsCourierReadOnly',
             word_evs = evs[(evs.type=='WORD')&(evs.eegoffset!=-1)]
             eeg = r.load_eeg(word_evs, rel_start=rel_start - buffer_time, rel_stop=rel_stop + buffer_time).to_ptsa()
         except Exception as e:
-            logger.warn(f"skipping session {row['session']} due to exception {e}")
+            logger.warning(f"skipping session {row['session']} due to exception {e}")
             continue
         # if successful, append events
         full_evs = word_evs if full_evs is None else pd.concat([full_evs, word_evs], ignore_index=True)
@@ -196,6 +197,7 @@ def load_powers(subject, experiment='NiclsCourierReadOnly',
         # Z-transform the features within each session
         norm_pows = StandardScaler().fit_transform(avg_pows)
         full_pows.append(norm_pows)
+        success_cnt += 1
     full_pows = np.vstack(full_pows)
     # Need unique trial labels
     full_evs.trial = full_evs.trial + trials_per_session * full_evs.session
@@ -248,10 +250,10 @@ if __name__=="__main__":
     subject = sys.argv[1]
     save = bool(sys.argv[2])
     if save:
-        #save_path = f"/data/eeg/scalp/ltp/NiclsCourierReadOnly/{subject}/nicls_{subject}_classifier.json"
-        import os
-        save_path = f"/scratch/jrudoler/NICLS/{subject}/nicls_{subject}_classifier.json"
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        save_path = f"/data/eeg/scalp/ltp/NiclsCourierReadOnly/{subject}/nicls_{subject}_classifier.json"
+#        import os
+#        save_path = f"/scratch/jrudoler/NICLS/{subject}/nicls_{subject}_classifier.json"
+#        os.makedirs(os.path.dirname(save_path), exist_ok=True)
     else:
         save_path = None
     print(f"Building Classifier for {subject}")
