@@ -152,7 +152,7 @@ class ClassifierModel:
 # NOTE: First session of LTP453 was inadvertently run with trials_per_session=8
 
 def load_powers(subject, experiment='NiclsCourierReadOnly',
-                num_readonly_sess=6, trials_per_session=10,
+                num_readonly_sess=8, trials_per_session=10,
                 rel_start=300, rel_stop=1300, buffer_time=416):
     data = cml.get_data_index(kind = 'ltp')
     data = data[(data['experiment']==experiment)&(data['subject']==subject)].sort_values('session').reset_index()
